@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="DEET - Automated Job Vacancy Discovery System. AI-powered career page monitoring and job extraction.">
+    <title>{% block title %}DEET Portal{% endblock %} — Job Vacancy Discovery</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                        <rect width="28" height="28" rx="8" fill="url(#logoGrad)"/>
+                        <path d="M8 10h12M8 14h8M8 18h10" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0" y1="0" x2="28" y2="28">
+                                <stop stop-color="#6366f1"/>
+                                <stop offset="1" stop-color="#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <span class="logo-name">DEET</span>
+                    <span class="logo-sub">Job Discovery</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <span class="nav-label">MAIN</span>
+            <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}" id="nav-dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="/jobs" class="nav-item {% if request.path == '/jobs' %}active{% endif %}" id="nav-jobs">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+                </svg>
+                <span>Job Listings</span>
+            </a>
+            <a href="/employers" class="nav-item {% if request.path == '/employers' %}active{% endif %}" id="nav-employers">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/>
+                    <path d="M9 9h1"/><path d="M9 13h1"/><path d="M9 17h1"/>
+                </svg>
+                <span>Employers</span>
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <span class="nav-label">SYSTEM</span>
+            <a href="/monitor" class="nav-item {% if request.path == '/monitor' %}active{% endif %}" id="nav-monitor">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                </svg>
+                <span>Monitor</span>
+            </a>
+            <a href="/reports" class="nav-item {% if request.path == '/reports' %}active{% endif %}" id="nav-reports">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                    <polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/>
+                </svg>
+                <span>Reports</span>
+            </a>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="system-status" id="system-status-indicator">
+                <div class="status-dot online"></div>
+                <span>System Online</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <h1 class="page-title">{% block page_title %}Dashboard{% endblock %}</h1>
+            </div>
+            <div class="top-bar-right">
+                <div class="scrape-trigger" id="quick-scrape">
+                    <button class="btn btn-primary btn-glow" id="btn-quick-scrape" onclick="quickScrape()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                            <polyline points="21,3 21,9 15,9"/>
+                        </svg>
+                        <span>Discover Jobs</span>
+                    </button>
+                </div>
+                <div class="timestamp" id="current-time"></div>
+            </div>
+        </header>
+
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <script>
+        // Update clock
+        function updateTime() {
+            const el = document.getElementById('current-time');
+            if (el) {
+                const now = new Date();
+                el.textContent = now.toLocaleString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                });
+            }
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Menu toggle
+        document.getElementById('menu-toggle')?.addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+            document.querySelector('.main-content').classList.toggle('expanded');
+        });
+
+        // Quick scrape
+        function quickScrape() {
+            const btn = document.getElementById('btn-quick-scrape');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Scraping...';
+
+            fetch('/api/scrape/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sources: ['remoteok', 'arbeitnow']})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'warning');
+                    btn.disabled = false;
+                    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21,3 21,9 15,9"/></svg><span>Discover Jobs</span>';
+                } else {
+                    showToast('Job discovery started!', 'success');
+                    pollScrapeStatus();
+                }
+            })
+            .catch(err => {
+                showToast('Failed to start scraping', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21,3 21,9 15,9"/></svg><span>Discover Jobs</span>';
+            });
+        }
+
+        function pollScrapeStatus() {
+            const interval = setInterval(() => {
+                fetch('/api/scrape/status')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.is_running) {
+                        clearInterval(interval);
+                        const btn = document.getElementById('btn-quick-scrape');
+                        btn.disabled = false;
+                        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21,3 21,9 15,9"/></svg><span>Discover Jobs</span>';
+                        showToast(`Discovery complete! Found ${data.total_new_jobs} new jobs`, 'success');
+                        if (typeof refreshDashboard === 'function') refreshDashboard();
+                        if (typeof loadJobs === 'function') loadJobs();
+                    }
+                });
+            }, 2000);
+        }
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container') || createToastContainer();
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            const icons = {
+                success: '✓', error: '✕', warning: '⚠', info: 'ℹ'
+            };
+            toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ'}</span><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function createToastContainer() {
+            const c = document.createElement('div');
+            c.id = 'toast-container';
+            document.body.appendChild(c);
+            return c;
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Employer Verification{% endblock %}
+{% block page_title %}Employer Verification{% endblock %}
+
+{% block content %}
+<!-- Auto-Verify Banner -->
+<div class="card mb-4 fade-in"
+    style="border-color: rgba(16,185,129,0.3); background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(34,211,238,0.03) 100%);">
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div class="kpi-icon" style="background:rgba(16,185,129,0.15); font-size:1.5rem;">🤖</div>
+        <div>
+            <div style="font-weight:700; font-size:1rem;">Fully Automated Verification</div>
+            <div class="text-sm text-muted" style="margin-top:4px;">
+                All employers are automatically verified when discovered. The system checks domain reachability, career
+                page validity, and company name consistency — <strong>zero manual work required</strong>.
+            </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-left:auto; white-space:nowrap;"
+            onclick="rerunVerification()">
+            🔄 Re-run Verification
+        </button>
+    </div>
+</div>
+
+<!-- Stats Summary -->
+<div class="kpi-grid mb-4 fade-in">
+    <div class="kpi-card" style="--kpi-color: var(--gradient-success)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background:rgba(16,185,129,0.12);">✅</div>
+            <span class="kpi-label">Verified</span>
+        </div>
+        <div class="kpi-value" id="stat-verified" style="color:var(--accent-emerald)">—</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color: var(--gradient-warning)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background:rgba(245,158,11,0.12);">⏳</div>
+            <span class="kpi-label">Pending</span>
+        </div>
+        <div class="kpi-value" id="stat-pending" style="color:var(--accent-amber)">—</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color: var(--gradient-danger)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background:rgba(244,63,94,0.12);">🚫</div>
+            <span class="kpi-label">Flagged</span>
+        </div>
+        <div class="kpi-value" id="stat-flagged" style="color:var(--accent-rose)">—</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color: var(--gradient-primary)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background:rgba(99,102,241,0.12);">🏢</div>
+            <span class="kpi-label">Total Employers</span>
+        </div>
+        <div class="kpi-value" id="stat-total">—</div>
+    </div>
+</div>
+
+<!-- Employer Grid -->
+<div class="card fade-in">
+    <div class="card-header">
+        <span class="card-title">🏢 Employer Verification Status</span>
+        <div class="tabs" style="border:none; margin:0;">
+            <button class="tab active" onclick="filterEmployers('all', this)">All</button>
+            <button class="tab" onclick="filterEmployers('verified', this)">✅ Verified</button>
+            <button class="tab" onclick="filterEmployers('pending', this)">⏳ Pending</button>
+            <button class="tab" onclick="filterEmployers('flagged', this)">🚫 Flagged</button>
+        </div>
+    </div>
+    <div id="employers-grid" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+        <div class="empty-state">
+            <div class="empty-state-icon">🏢</div>
+            <div class="empty-state-title">Loading employers...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allEmployers = [];
+
+    function loadEmployers() {
+        fetch('/api/employers')
+            .then(r => r.json())
+            .then(data => {
+                allEmployers = data;
+                updateStats(data);
+                renderEmployers(data);
+            });
+    }
+
+    function updateStats(employers) {
+        const verified = employers.filter(e => e.verification_status === 'verified').length;
+        const pending = employers.filter(e => e.verification_status === 'pending').length;
+        const flagged = employers.filter(e => e.verification_status === 'flagged' || e.verification_status === 'rejected').length;
+
+        document.getElementById('stat-verified').textContent = verified;
+        document.getElementById('stat-pending').textContent = pending;
+        document.getElementById('stat-flagged').textContent = flagged;
+        document.getElementById('stat-total').textContent = employers.length;
+    }
+
+    function filterEmployers(status, tabEl) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        if (tabEl) tabEl.classList.add('active');
+
+        if (status === 'all') {
+            renderEmployers(allEmployers);
+        } else {
+            renderEmployers(allEmployers.filter(e => {
+                if (status === 'flagged') return e.verification_status === 'flagged' || e.verification_status === 'rejected';
+                return e.verification_status === status;
+            }));
+        }
+    }
+
+    function renderEmployers(employers) {
+        const grid = document.getElementById('employers-grid');
+        if (!employers.length) {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🏢</div>
+                    <div class="empty-state-title">No employers in this category</div>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = employers.map(emp => {
+            const initials = (emp.name || 'U').substring(0, 2).toUpperCase();
+            const status = emp.verification_status || 'pending';
+            const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+            const score = emp.verification_score || 0;
+            const scorePct = Math.round(score * 100);
+            const scoreClass = scorePct >= 70 ? 'high' : scorePct >= 40 ? 'medium' : 'low';
+
+            const statusIcons = {
+                'verified': '✅',
+                'pending': '⏳',
+                'flagged': '🚫',
+                'rejected': '❌'
+            };
+
+            return `
+                <div class="employer-card fade-in">
+                    <div class="employer-avatar">${initials}</div>
+                    <div class="employer-info">
+                        <div class="employer-name">${escapeHtml(emp.name)}</div>
+                        <div class="employer-domain">${escapeHtml(emp.domain || '')}</div>
+                        <div class="employer-meta">
+                            ${escapeHtml(emp.industry || 'Technology')}
+                            ${emp.verified_at ? ` · Checked: ${formatTime(emp.verified_at)}` : ''}
+                            ${emp.verified_by ? ` · By: ${emp.verified_by}` : ''}
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:16px;">
+                        <div style="text-align:center;">
+                            <div class="confidence-meter">
+                                <div class="confidence-bar" style="width:80px;">
+                                    <div class="confidence-fill ${scoreClass}" style="width:${scorePct}%"></div>
+                                </div>
+                                <span class="confidence-text">${scorePct}%</span>
+                            </div>
+                            <div class="text-xs text-muted" style="margin-top:4px;">Trust Score</div>
+                        </div>
+                        <span class="verification-badge ${status}">
+                            ${statusIcons[status] || '❓'} ${statusLabel}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function rerunVerification() {
+        const btn = event.target;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Verifying...';
+        showToast('🤖 Re-running automated verification for all employers...', 'info');
+
+        // Auto-verify each pending employer
+        const pendingEmployers = allEmployers.filter(e => e.verification_status === 'pending');
+        let completed = 0;
+        const total = pendingEmployers.length || allEmployers.length;
+
+        const verifyAll = allEmployers.map(emp =>
+            fetch(`/api/employers/${emp.id}/auto-verify`, { method: 'POST' })
+                .then(r => r.json())
+                .then(() => { completed++; })
+                .catch(() => { completed++; })
+        );
+
+        Promise.all(verifyAll).then(() => {
+            btn.disabled = false;
+            btn.innerHTML = '🔄 Re-run Verification';
+            showToast(`✅ Verification complete! ${completed} employers checked.`, 'success');
+            loadEmployers();
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '';
+        try {
+            const d = new Date(ts + 'Z');
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return ts; }
+    }
+
+    loadEmployers();
+    // Auto-refresh every 5 seconds
+    setInterval(loadEmployers, 5000);
+</script>
+{% endblock %}

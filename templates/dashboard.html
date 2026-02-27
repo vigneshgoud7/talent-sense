@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Workforce Intelligence Dashboard{% endblock %}
+
+{% block content %}
+<!-- KPI Cards -->
+<div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card fade-in stagger-1" style="--kpi-color: var(--gradient-primary)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background: rgba(99,102,241,0.12);">💼</div>
+            <span class="kpi-label">Total Jobs</span>
+        </div>
+        <div class="kpi-value" id="kpi-total-jobs">—</div>
+        <span class="kpi-change positive" id="kpi-today">↑ today</span>
+    </div>
+    <div class="kpi-card fade-in stagger-2" style="--kpi-color: var(--gradient-success)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background: rgba(16,185,129,0.12);">✅</div>
+            <span class="kpi-label">Active Jobs</span>
+        </div>
+        <div class="kpi-value" id="kpi-active-jobs">—</div>
+        <span class="kpi-change positive">Active listings</span>
+    </div>
+    <div class="kpi-card fade-in stagger-3" style="--kpi-color: var(--gradient-cyan)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background: rgba(34,211,238,0.12);">🏢</div>
+            <span class="kpi-label">Employers</span>
+        </div>
+        <div class="kpi-value" id="kpi-employers">—</div>
+        <span class="kpi-change positive" id="kpi-verified">verified</span>
+    </div>
+    <div class="kpi-card fade-in stagger-4" style="--kpi-color: var(--gradient-warning)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background: rgba(245,158,11,0.12);">⏳</div>
+            <span class="kpi-label">Pending Review</span>
+        </div>
+        <div class="kpi-value" id="kpi-pending">—</div>
+        <span class="kpi-change">Awaiting verification</span>
+    </div>
+    <div class="kpi-card fade-in stagger-5" style="--kpi-color: var(--gradient-danger)">
+        <div class="kpi-header">
+            <div class="kpi-icon" style="background: rgba(244,63,94,0.12);">🔄</div>
+            <span class="kpi-label">Duplicates Caught</span>
+        </div>
+        <div class="kpi-value" id="kpi-duplicates">—</div>
+        <span class="kpi-change">By ML engine</span>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid-2 mb-4">
+    <!-- Category Distribution -->
+    <div class="chart-container fade-in">
+        <div class="chart-title">📊 Job Category Distribution</div>
+        <div class="bar-chart" id="category-chart">
+            <div class="empty-state" style="padding:30px;">
+                <div class="empty-state-icon">📊</div>
+                <div class="empty-state-text">Run a scrape to see category data</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Companies -->
+    <div class="chart-container fade-in">
+        <div class="chart-title">🏆 Top Hiring Companies</div>
+        <div class="bar-chart" id="company-chart">
+            <div class="empty-state" style="padding:30px;">
+                <div class="empty-state-icon">🏢</div>
+                <div class="empty-state-text">Run a scrape to see company data</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Jobs & Scrape Status -->
+<div class="grid-2">
+    <!-- Recent Jobs -->
+    <div class="card fade-in">
+        <div class="card-header">
+            <span class="card-title">🕐 Recent Discoveries</span>
+            <a href="/jobs" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+        <div class="activity-feed" id="recent-jobs-feed">
+            <div class="empty-state" style="padding:20px;">
+                <div class="empty-state-text">No jobs discovered yet. Click "Discover Jobs" to start!</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scrape History -->
+    <div class="card fade-in">
+        <div class="card-header">
+            <span class="card-title">📡 Scrape History</span>
+        </div>
+        <div id="scrape-history">
+            <div class="empty-state" style="padding:20px;">
+                <div class="empty-state-text">No scrape runs yet</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const CHART_COLORS = [
+        '#6366f1', '#8b5cf6', '#a78bfa', '#22d3ee', '#10b981',
+        '#3b82f6', '#f59e0b', '#f43f5e', '#ec4899', '#14b8a6',
+        '#f97316', '#84cc16', '#06b6d4', '#d946ef', '#64748b'
+    ];
+
+    function refreshDashboard() {
+        fetch('/api/dashboard/stats')
+            .then(r => r.json())
+            .then(data => {
+                // KPIs
+                animateValue('kpi-total-jobs', data.total_jobs || 0);
+                animateValue('kpi-active-jobs', data.active_jobs || 0);
+                animateValue('kpi-employers', data.total_employers || 0);
+                animateValue('kpi-pending', data.pending_verification || 0);
+                animateValue('kpi-duplicates', data.duplicates_caught || 0);
+
+                document.getElementById('kpi-today').innerHTML = `↑ ${data.jobs_today || 0} today`;
+                document.getElementById('kpi-verified').innerHTML = `${data.verified_employers || 0} verified`;
+
+                // Category Chart
+                renderBarChart('category-chart', data.categories || {}, CHART_COLORS);
+
+                // Company Chart
+                renderBarChart('company-chart', data.top_companies || {},
+                    ['#22d3ee', '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#f43f5e', '#ec4899', '#14b8a6', '#f97316', '#84cc16']);
+
+                // Recent Jobs
+                renderRecentJobs(data.recent_jobs || []);
+            });
+
+        // Scrape history
+        fetch('/api/scrape/history')
+            .then(r => r.json())
+            .then(runs => renderScrapeHistory(runs));
+    }
+
+    function animateValue(id, target) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const start = parseInt(el.textContent) || 0;
+        const duration = 600;
+        const startTime = performance.now();
+
+        function update(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.round(start + (target - start) * eased).toLocaleString();
+            if (progress < 1) requestAnimationFrame(update);
+        }
+        requestAnimationFrame(update);
+    }
+
+    function renderBarChart(containerId, data, colors) {
+        const container = document.getElementById(containerId);
+        if (!container || !Object.keys(data).length) return;
+
+        const maxVal = Math.max(...Object.values(data), 1);
+        let html = '';
+        Object.entries(data).forEach(([label, value], idx) => {
+            const pct = (value / maxVal) * 100;
+            const color = colors[idx % colors.length];
+            html += `
+                <div class="bar-row">
+                    <span class="bar-label" title="${label}">${label}</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width:${pct}%;background:${color};"></div>
+                    </div>
+                    <span class="bar-value">${value}</span>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function renderRecentJobs(jobs) {
+        const feed = document.getElementById('recent-jobs-feed');
+        if (!feed || !jobs.length) return;
+
+        feed.innerHTML = jobs.map(job => `
+            <div class="activity-item">
+                <div class="activity-dot"></div>
+                <div class="activity-content">
+                    <div class="activity-title">${escapeHtml(job.title)}</div>
+                    <div class="activity-meta">
+                        ${escapeHtml(job.company)} · ${escapeHtml(job.location || 'Remote')} · 
+                        <span class="badge badge-primary">${escapeHtml(job.category)}</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderScrapeHistory(runs) {
+        const container = document.getElementById('scrape-history');
+        if (!container || !runs.length) return;
+
+        container.innerHTML = `
+            <div class="data-table-wrapper" style="max-height:300px; overflow-y:auto;">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>Source</th><th>Found</th><th>New</th><th>Status</th><th>Time</th>
+                    </tr></thead>
+                    <tbody>
+                        ${runs.slice(0, 10).map(r => `
+                            <tr>
+                                <td>${escapeHtml(r.company_name)}</td>
+                                <td>${r.jobs_found || 0}</td>
+                                <td style="color:var(--accent-emerald)">${r.jobs_new || 0}</td>
+                                <td><span class="badge badge-${r.status === 'completed' ? 'success' : 'warning'}">${r.status}</span></td>
+                                <td class="text-mono text-xs">${formatTime(r.started_at)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts + 'Z');
+            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return ts; }
+    }
+
+    // Initial load
+    refreshDashboard();
+    // Auto-refresh every 10s
+    setInterval(refreshDashboard, 10000);
+</script>
+{% endblock %}

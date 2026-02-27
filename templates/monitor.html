@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}Career Page Monitor{% endblock %}
+{% block page_title %}Career Page Monitor{% endblock %}
+
+{% block content %}
+<!-- Scrape Controls -->
+<div class="card mb-4 fade-in">
+    <div class="card-header">
+        <span class="card-title">🤖 Job Discovery Agent</span>
+        <div id="scrape-live-status"></div>
+    </div>
+    <p class="text-sm text-muted mb-4">Select sources to scrape, then launch the discovery agent. Jobs are automatically
+        processed through NLP extraction, ML classification, and duplicate detection.</p>
+
+    <div class="source-grid mb-4" id="source-grid"></div>
+
+    <div style="display:flex; align-items:center; gap:16px; margin-top:16px;">
+        <button class="btn btn-primary btn-lg" id="btn-launch-scrape" onclick="launchScrape()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5,3 19,12 5,21" />
+            </svg>
+            Launch Discovery Agent
+        </button>
+        <span class="text-sm text-muted" id="selected-count">0 sources selected</span>
+    </div>
+</div>
+
+<!-- Live Progress -->
+<div class="card mb-4 fade-in" id="progress-card" style="display:none;">
+    <div class="card-header">
+        <span class="card-title">⚡ Live Scraping Progress</span>
+        <span class="pulse-live">LIVE</span>
+    </div>
+    <div id="progress-content">
+        <div class="progress-bar mb-4">
+            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+        <div id="progress-details" class="text-sm"></div>
+    </div>
+</div>
+
+<!-- Results -->
+<div class="card mb-4 fade-in" id="results-card" style="display:none;">
+    <div class="card-header">
+        <span class="card-title">📊 Discovery Results</span>
+    </div>
+    <div id="results-content"></div>
+</div>
+
+<!-- Monitored Career Pages -->
+<div class="card fade-in">
+    <div class="card-header">
+        <span class="card-title">📋 Monitored Career Pages</span>
+    </div>
+    <div id="career-pages-list">
+        <div class="empty-state" style="padding:20px;">
+            <div class="empty-state-text">Loading career pages...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedSources = new Set(['remoteok', 'arbeitnow']);
+
+    function loadSources() {
+        fetch('/api/sources')
+            .then(r => r.json())
+            .then(sources => {
+                const grid = document.getElementById('source-grid');
+                grid.innerHTML = sources.map(s => `
+                <div class="source-card ${selectedSources.has(s.id) ? 'selected' : ''}" 
+                     onclick="toggleSource('${s.id}', this)" id="source-${s.id}">
+                    <span class="source-icon">${s.icon}</span>
+                    <div>
+                        <div class="source-name">${escapeHtml(s.name)}</div>
+                        <div class="source-desc">${escapeHtml(s.description)}</div>
+                        <span class="source-type">${s.type}</span>
+                    </div>
+                </div>
+            `).join('');
+                updateSelectedCount();
+            });
+    }
+
+    function toggleSource(id, el) {
+        if (selectedSources.has(id)) {
+            selectedSources.delete(id);
+            el.classList.remove('selected');
+        } else {
+            selectedSources.add(id);
+            el.classList.add('selected');
+        }
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        document.getElementById('selected-count').textContent =
+            `${selectedSources.size} source${selectedSources.size !== 1 ? 's' : ''} selected`;
+    }
+
+    function launchScrape() {
+        if (selectedSources.size === 0) {
+            showToast('Please select at least one source', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btn-launch-scrape');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Initializing...';
+
+        document.getElementById('progress-card').style.display = 'block';
+        document.getElementById('results-card').style.display = 'none';
+
+        fetch('/api/scrape/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sources: [...selectedSources] })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'warning');
+                    btn.disabled = false;
+                    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg> Launch Discovery Agent';
+                    return;
+                }
+                showToast('Discovery agent launched!', 'success');
+                pollProgress();
+            })
+            .catch(err => {
+                showToast('Failed to launch agent', 'error');
+                btn.disabled = false;
+            });
+    }
+
+    function pollProgress() {
+        const interval = setInterval(() => {
+            fetch('/api/scrape/status')
+                .then(r => r.json())
+                .then(data => {
+                    // Update progress
+                    document.getElementById('progress-fill').style.width = data.progress + '%';
+
+                    let detailsHtml = `
+                    <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                        <div><span class="text-muted">Progress:</span> <strong>${data.progress}%</strong></div>
+                        <div><span class="text-muted">Current:</span> <strong>${data.current_source || '—'}</strong></div>
+                        <div><span class="text-muted">Found:</span> <strong style="color:var(--accent-cyan)">${data.total_jobs_found}</strong></div>
+                        <div><span class="text-muted">New:</span> <strong style="color:var(--accent-emerald)">${data.total_new_jobs}</strong></div>
+                        <div><span class="text-muted">Duplicates:</span> <strong style="color:var(--accent-amber)">${data.total_duplicates}</strong></div>
+                    </div>
+                `;
+
+                    // Source results
+                    if (Object.keys(data.results).length) {
+                        detailsHtml += '<div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">';
+                        for (const [src, res] of Object.entries(data.results)) {
+                            const icon = res.status === 'success' ? '✅' : '❌';
+                            detailsHtml += `
+                            <div class="activity-item">
+                                <span>${icon}</span>
+                                <div class="activity-content">
+                                    <div class="activity-title">${escapeHtml(src)}</div>
+                                    <div class="activity-meta">
+                                        ${res.status === 'success'
+                                    ? `Found ${res.jobs_found} jobs · ${res.new_jobs} new · ${res.duplicates} duplicates`
+                                    : `Error: ${res.error || 'Unknown'}`
+                                }
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        }
+                        detailsHtml += '</div>';
+                    }
+
+                    document.getElementById('progress-details').innerHTML = detailsHtml;
+
+                    if (!data.is_running) {
+                        clearInterval(interval);
+                        const btn = document.getElementById('btn-launch-scrape');
+                        btn.disabled = false;
+                        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg> Launch Discovery Agent';
+
+                        showToast(`Discovery complete! ${data.total_new_jobs} new jobs found`, 'success');
+                        showResults(data);
+                    }
+                });
+        }, 1500);
+    }
+
+    function showResults(data) {
+        const card = document.getElementById('results-card');
+        card.style.display = 'block';
+
+        card.querySelector('#results-content').innerHTML = `
+            <div class="kpi-grid" style="margin-bottom:0;">
+                <div class="kpi-card" style="--kpi-color:var(--gradient-cyan)">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:rgba(34,211,238,0.12);">🔍</div>
+                        <span class="kpi-label">Total Found</span>
+                    </div>
+                    <div class="kpi-value">${data.total_jobs_found}</div>
+                </div>
+                <div class="kpi-card" style="--kpi-color:var(--gradient-success)">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:rgba(16,185,129,0.12);">✨</div>
+                        <span class="kpi-label">New Jobs</span>
+                    </div>
+                    <div class="kpi-value" style="color:var(--accent-emerald)">${data.total_new_jobs}</div>
+                </div>
+                <div class="kpi-card" style="--kpi-color:var(--gradient-warning)">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:rgba(245,158,11,0.12);">🔄</div>
+                        <span class="kpi-label">Duplicates</span>
+                    </div>
+                    <div class="kpi-value" style="color:var(--accent-amber)">${data.total_duplicates}</div>
+                </div>
+                <div class="kpi-card" style="--kpi-color:var(--gradient-primary)">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:rgba(99,102,241,0.12);">📡</div>
+                        <span class="kpi-label">Sources Scraped</span>
+                    </div>
+                    <div class="kpi-value">${Object.keys(data.results).length}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    function loadCareerPages() {
+        fetch('/api/career-pages')
+            .then(r => r.json())
+            .then(pages => {
+                const container = document.getElementById('career-pages-list');
+                if (!pages.length) {
+                    container.innerHTML = '<div class="text-sm text-muted">No career pages configured</div>';
+                    return;
+                }
+                container.innerHTML = `
+                <div class="data-table-wrapper">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Company</th><th>Career Page URL</th><th>Status</th>
+                        </tr></thead>
+                        <tbody>
+                            ${pages.map(p => `
+                                <tr>
+                                    <td><strong>${escapeHtml(p.company_name)}</strong></td>
+                                    <td class="text-mono text-xs" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">
+                                        <a href="${escapeHtml(p.url)}" target="_blank" style="color:var(--accent-cyan);">${escapeHtml(p.url)}</a>
+                                    </td>
+                                    <td><span class="badge ${p.is_active ? 'badge-success' : 'badge-muted'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts + 'Z');
+            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return ts; }
+    }
+
+    loadSources();
+    loadCareerPages();
+</script>
+{% endblock %}

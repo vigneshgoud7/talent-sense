@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Reports & Analytics{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<div class="tabs">
+    <button class="tab active" onclick="showTab('skills', this)">🛠️ Skill Demand</button>
+    <button class="tab" onclick="showTab('audit', this)">🔐 Audit Logs</button>
+    <button class="tab" onclick="showTab('scrape', this)">📡 Scrape History</button>
+</div>
+
+<!-- Tab: Skill Demand -->
+<div class="tab-content" id="tab-skills">
+    <div class="grid-2">
+        <div class="chart-container">
+            <div class="chart-title">📊 Top Skills in Demand</div>
+            <div class="bar-chart" id="skill-chart">
+                <div class="empty-state" style="padding:30px;">
+                    <div class="empty-state-icon">🛠️</div>
+                    <div class="empty-state-text">Scrape jobs to see skill demand data</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📈 Skill Categories</span>
+            </div>
+            <div id="skill-categories">
+                <div class="empty-state" style="padding:30px;">
+                    <div class="empty-state-text">No skill data yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab: Audit Logs -->
+<div class="tab-content" id="tab-audit" style="display:none;">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🔐 System Audit Log</span>
+            <span class="text-xs text-muted">Governance & compliance tracking</span>
+        </div>
+        <div id="audit-log-content">
+            <div class="empty-state" style="padding:30px;">
+                <div class="empty-state-text">Loading audit logs...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab: Scrape History -->
+<div class="tab-content" id="tab-scrape" style="display:none;">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">📡 Full Scrape History</span>
+        </div>
+        <div id="scrape-history-content">
+            <div class="empty-state" style="padding:30px;">
+                <div class="empty-state-text">Loading scrape history...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const SKILL_COLORS = [
+        '#6366f1', '#8b5cf6', '#22d3ee', '#10b981', '#3b82f6',
+        '#f59e0b', '#f43f5e', '#ec4899', '#14b8a6', '#f97316',
+        '#84cc16', '#06b6d4', '#d946ef', '#64748b', '#a78bfa',
+        '#2dd4bf', '#fb923c', '#818cf8', '#34d399', '#fbbf24',
+        '#c084fc', '#38bdf8', '#4ade80', '#fb7185', '#a3e635',
+        '#e879f9', '#67e8f9', '#86efac', '#fca5a5', '#bef264'
+    ];
+
+    function showTab(tab, el) {
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab-' + tab).style.display = 'block';
+        el.classList.add('active');
+    }
+
+    function loadSkillData() {
+        fetch('/api/skills/summary')
+            .then(r => r.json())
+            .then(data => {
+                if (!Object.keys(data).length) return;
+
+                const maxVal = Math.max(...Object.values(data), 1);
+                const chart = document.getElementById('skill-chart');
+
+                chart.innerHTML = Object.entries(data).slice(0, 20).map(([skill, count], idx) => {
+                    const pct = (count / maxVal) * 100;
+                    const color = SKILL_COLORS[idx % SKILL_COLORS.length];
+                    return `
+                    <div class="bar-row">
+                        <span class="bar-label" title="${escapeHtml(skill)}">${escapeHtml(skill)}</span>
+                        <div class="bar-track">
+                            <div class="bar-fill" style="width:${pct}%;background:${color};"></div>
+                        </div>
+                        <span class="bar-value">${count}</span>
+                    </div>
+                `;
+                }).join('');
+
+                // Skill categories summary
+                const categories = {};
+                const categoryMap = {
+                    'python': 'Programming', 'javascript': 'Programming', 'java': 'Programming',
+                    'typescript': 'Programming', 'go': 'Programming', 'rust': 'Programming',
+                    'react': 'Frontend', 'angular': 'Frontend', 'vue': 'Frontend', 'css': 'Frontend',
+                    'node.js': 'Backend', 'django': 'Backend', 'flask': 'Backend',
+                    'aws': 'Cloud', 'azure': 'Cloud', 'gcp': 'Cloud', 'docker': 'Cloud', 'kubernetes': 'Cloud',
+                    'machine learning': 'Data/AI', 'deep learning': 'Data/AI', 'data': 'Data/AI',
+                    'sql': 'Database', 'postgresql': 'Database', 'mongodb': 'Database',
+                    'git': 'Tools', 'linux': 'Tools', 'agile': 'Tools'
+                };
+
+                Object.entries(data).forEach(([skill, count]) => {
+                    const cat = categoryMap[skill.toLowerCase()] || 'Other';
+                    categories[cat] = (categories[cat] || 0) + count;
+                });
+
+                const catContainer = document.getElementById('skill-categories');
+                catContainer.innerHTML = Object.entries(categories)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cat, count], idx) => `
+                    <div class="activity-item">
+                        <div class="activity-dot" style="background:${SKILL_COLORS[idx % SKILL_COLORS.length]}"></div>
+                        <div class="activity-content">
+                            <div class="activity-title">${escapeHtml(cat)}</div>
+                            <div class="activity-meta">${count} skill mentions</div>
+                        </div>
+                    </div>
+                `).join('');
+            });
+    }
+
+    function loadAuditLogs() {
+        fetch('/api/audit-logs')
+            .then(r => r.json())
+            .then(logs => {
+                const container = document.getElementById('audit-log-content');
+                if (!logs.length) {
+                    container.innerHTML = '<div class="text-sm text-muted" style="padding:16px;">No audit logs yet</div>';
+                    return;
+                }
+
+                container.innerHTML = `
+                <div class="data-table-wrapper" style="max-height:500px;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Action</th><th>Entity</th><th>Details</th><th>Timestamp</th>
+                        </tr></thead>
+                        <tbody>
+                            ${logs.map(l => `
+                                <tr>
+                                    <td><span class="badge badge-info">${escapeHtml(l.action)}</span></td>
+                                    <td class="text-sm">${escapeHtml(l.entity_type || '—')} ${l.entity_id ? '#' + l.entity_id : ''}</td>
+                                    <td class="text-sm" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">
+                                        ${escapeHtml((l.details || '').substring(0, 100))}
+                                    </td>
+                                    <td class="text-mono text-xs">${formatTime(l.created_at)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            });
+    }
+
+    function loadScrapeHistory() {
+        fetch('/api/scrape/history')
+            .then(r => r.json())
+            .then(runs => {
+                const container = document.getElementById('scrape-history-content');
+                if (!runs.length) {
+                    container.innerHTML = '<div class="text-sm text-muted" style="padding:16px;">No scrape history yet</div>';
+                    return;
+                }
+
+                container.innerHTML = `
+                <div class="data-table-wrapper" style="max-height:500px;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Source</th><th>Jobs Found</th><th>New</th><th>Duplicates</th>
+                            <th>Duration</th><th>Status</th><th>Timestamp</th>
+                        </tr></thead>
+                        <tbody>
+                            ${runs.map(r => `
+                                <tr>
+                                    <td><strong>${escapeHtml(r.company_name)}</strong></td>
+                                    <td>${r.jobs_found || 0}</td>
+                                    <td style="color:var(--accent-emerald);font-weight:600;">${r.jobs_new || 0}</td>
+                                    <td style="color:var(--accent-amber);">${r.jobs_duplicate || 0}</td>
+                                    <td class="text-mono text-xs">${r.duration_seconds ? r.duration_seconds.toFixed(1) + 's' : '—'}</td>
+                                    <td><span class="badge ${r.status === 'completed' ? 'badge-success' : r.status === 'running' ? 'badge-warning' : 'badge-danger'}">${r.status}</span></td>
+                                    <td class="text-mono text-xs">${formatTime(r.started_at)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts + 'Z');
+            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return ts; }
+    }
+
+    // Load all
+    loadSkillData();
+    loadAuditLogs();
+    loadScrapeHistory();
+</script>
+{% endblock %}

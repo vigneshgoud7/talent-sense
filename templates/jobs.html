@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% block title %}Job Listings{% endblock %}
+{% block page_title %}Job Listings{% endblock %}
+
+{% block content %}
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <div class="search-bar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="form-input" id="search-input"
+            placeholder="Search jobs by title, skills, or company...">
+    </div>
+    <select class="form-select" id="filter-category" style="width:180px;">
+        <option value="">All Categories</option>
+        <option value="Software Engineering">Software Engineering</option>
+        <option value="Data Science">Data Science</option>
+        <option value="DevOps">DevOps</option>
+        <option value="Product Management">Product Management</option>
+        <option value="Design">Design</option>
+        <option value="Marketing">Marketing</option>
+        <option value="Sales">Sales</option>
+        <option value="Human Resources">Human Resources</option>
+        <option value="Finance">Finance</option>
+        <option value="Quality Assurance">Quality Assurance</option>
+        <option value="Customer Support">Customer Support</option>
+        <option value="Operations">Operations</option>
+        <option value="Other">Other</option>
+    </select>
+    <select class="form-select" id="filter-company" style="width:180px;">
+        <option value="">All Companies</option>
+    </select>
+    <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+    <div style="margin-left:auto;" class="text-sm text-muted" id="job-count-label">0 jobs</div>
+</div>
+
+<!-- Jobs Table -->
+<div class="data-table-wrapper" id="jobs-table-wrapper">
+    <table class="data-table" id="jobs-table">
+        <thead>
+            <tr>
+                <th style="width:30%">Job Title</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>Category</th>
+                <th>Experience</th>
+                <th>Skills</th>
+                <th>Confidence</th>
+                <th>Discovered</th>
+            </tr>
+        </thead>
+        <tbody id="jobs-tbody">
+            <tr>
+                <td colspan="8">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💼</div>
+                        <div class="empty-state-title">No jobs yet</div>
+                        <div class="empty-state-text">Click "Discover Jobs" to start scraping career pages</div>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination" id="pagination"></div>
+
+<!-- Job Detail Modal -->
+<div class="modal-overlay" id="job-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title" id="modal-title">Job Details</h2>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    let totalPages = 1;
+    let debounceTimer;
+
+    // Event Listeners
+    document.getElementById('search-input').addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => { currentPage = 1; loadJobs(); }, 400);
+    });
+    document.getElementById('filter-category').addEventListener('change', () => { currentPage = 1; loadJobs(); });
+    document.getElementById('filter-company').addEventListener('change', () => { currentPage = 1; loadJobs(); });
+
+    function loadJobs() {
+        const search = document.getElementById('search-input').value;
+        const category = document.getElementById('filter-category').value;
+        const company = document.getElementById('filter-company').value;
+
+        let url = `/api/jobs?page=${currentPage}&per_page=20`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (category) url += `&category=${encodeURIComponent(category)}`;
+        if (company) url += `&company=${encodeURIComponent(company)}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                renderJobs(data.jobs);
+                totalPages = data.pages;
+                document.getElementById('job-count-label').textContent = `${data.total} jobs`;
+                renderPagination(data.page, data.pages, data.total);
+                populateCompanyFilter(data.jobs);
+            });
+    }
+
+    function renderJobs(jobs) {
+        const tbody = document.getElementById('jobs-tbody');
+        if (!jobs.length) {
+            tbody.innerHTML = `<tr><td colspan="8">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <div class="empty-state-title">No matching jobs found</div>
+                    <div class="empty-state-text">Try adjusting your filters or run a new scrape</div>
+                </div>
+            </td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = jobs.map(job => {
+            const skills = Array.isArray(job.skills) ? job.skills : [];
+            const skillTags = skills.slice(0, 3).map(s =>
+                `<span class="skill-tag">${escapeHtml(s)}</span>`
+            ).join('') + (skills.length > 3 ? `<span class="skill-tag">+${skills.length - 3}</span>` : '');
+
+            const conf = job.confidence_score || 0;
+            const confClass = conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
+            const confPct = Math.round(conf * 100);
+
+            return `
+                <tr onclick="openJobModal(${job.id})" style="cursor:pointer;">
+                    <td><strong>${escapeHtml(job.title)}</strong></td>
+                    <td>${escapeHtml(job.company)}</td>
+                    <td class="text-sm">${escapeHtml(job.location || 'Remote')}</td>
+                    <td><span class="badge badge-primary">${escapeHtml(job.category)}</span></td>
+                    <td class="text-sm">${escapeHtml(job.experience_level || 'Mid-level')}</td>
+                    <td><div class="skill-tags">${skillTags}</div></td>
+                    <td>
+                        <div class="confidence-meter">
+                            <div class="confidence-bar">
+                                <div class="confidence-fill ${confClass}" style="width:${confPct}%"></div>
+                            </div>
+                            <span class="confidence-text">${confPct}%</span>
+                        </div>
+                    </td>
+                    <td class="text-mono text-xs">${formatTime(job.discovered_at)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderPagination(page, pages, total) {
+        const container = document.getElementById('pagination');
+        if (pages <= 1) { container.innerHTML = ''; return; }
+
+        let html = `<button ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">← Prev</button>`;
+
+        const start = Math.max(1, page - 2);
+        const end = Math.min(pages, page + 2);
+
+        if (start > 1) html += `<button onclick="goToPage(1)">1</button>`;
+        if (start > 2) html += `<span class="pagination-info">...</span>`;
+
+        for (let i = start; i <= end; i++) {
+            html += `<button class="${i === page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+        }
+
+        if (end < pages - 1) html += `<span class="pagination-info">...</span>`;
+        if (end < pages) html += `<button onclick="goToPage(${pages})">${pages}</button>`;
+
+        html += `<button ${page >= pages ? 'disabled' : ''} onclick="goToPage(${page + 1})">Next →</button>`;
+        container.innerHTML = html;
+    }
+
+    function goToPage(page) {
+        currentPage = page;
+        loadJobs();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function populateCompanyFilter(jobs) {
+        const select = document.getElementById('filter-company');
+        const current = select.value;
+        const companies = [...new Set(jobs.map(j => j.company).filter(Boolean))].sort();
+
+        if (select.options.length <= 1) {
+            companies.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                select.appendChild(opt);
+            });
+        }
+        if (current) select.value = current;
+    }
+
+    function openJobModal(jobId) {
+        fetch(`/api/jobs/${jobId}`)
+            .then(r => r.json())
+            .then(job => {
+                document.getElementById('modal-title').textContent = job.title;
+                const skills = Array.isArray(job.skills) ? job.skills : [];
+                const conf = job.confidence_score || 0;
+                const confClass = conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
+
+                document.getElementById('modal-body').innerHTML = `
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+                    <div>
+                        <span class="text-sm text-muted">Company</span>
+                        <div style="font-weight:600; margin-top:4px;">${escapeHtml(job.company)}</div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-muted">Location</span>
+                        <div style="font-weight:600; margin-top:4px;">${escapeHtml(job.location || 'Remote')}</div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-muted">Category</span>
+                        <div style="margin-top:4px;"><span class="badge badge-primary">${escapeHtml(job.category)}</span></div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-muted">Experience Level</span>
+                        <div style="font-weight:600; margin-top:4px;">${escapeHtml(job.experience_level || 'Mid-level')}</div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-muted">Job Type</span>
+                        <div style="font-weight:600; margin-top:4px;">${escapeHtml(job.job_type || 'Full-time')}</div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-muted">Salary</span>
+                        <div style="font-weight:600; margin-top:4px;">${escapeHtml(job.salary_range || 'Not specified')}</div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <span class="text-sm text-muted">Data Confidence</span>
+                    <div class="confidence-meter" style="margin-top:6px;">
+                        <div class="confidence-bar" style="width:120px;">
+                            <div class="confidence-fill ${confClass}" style="width:${Math.round(conf * 100)}%"></div>
+                        </div>
+                        <span class="confidence-text">${Math.round(conf * 100)}%</span>
+                    </div>
+                </div>
+
+                ${skills.length ? `
+                <div style="margin-bottom:16px;">
+                    <span class="text-sm text-muted">Detected Skills</span>
+                    <div class="skill-tags" style="margin-top:8px;">
+                        ${skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+
+                ${job.description ? `
+                <div style="margin-bottom:16px;">
+                    <span class="text-sm text-muted">Description</span>
+                    <div style="margin-top:8px; font-size:0.85rem; color:var(--text-secondary); line-height:1.6; max-height:200px; overflow-y:auto;">
+                        ${escapeHtml(job.description).substring(0, 1000)}${job.description.length > 1000 ? '...' : ''}
+                    </div>
+                </div>` : ''}
+
+                <div style="display:flex; gap:12px; margin-top:20px;">
+                    ${job.apply_url ? `<a href="${escapeHtml(job.apply_url)}" target="_blank" class="btn btn-primary">Apply Now →</a>` : ''}
+                    ${job.source_url ? `<a href="${escapeHtml(job.source_url)}" target="_blank" class="btn btn-secondary">View Source</a>` : ''}
+                </div>
+
+                <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border-subtle);">
+                    <div style="display:flex; gap:24px;">
+                        <span class="text-xs text-muted">Discovered: ${formatTime(job.discovered_at)}</span>
+                        <span class="text-xs text-muted">Last Seen: ${formatTime(job.last_seen)}</span>
+                        <span class="text-xs text-muted">ID: #${job.id}</span>
+                    </div>
+                </div>
+            `;
+                document.getElementById('job-modal').classList.add('active');
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('job-modal').classList.remove('active');
+    }
+
+    document.getElementById('job-modal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) closeModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+
+    function resetFilters() {
+        document.getElementById('search-input').value = '';
+        document.getElementById('filter-category').value = '';
+        document.getElementById('filter-company').value = '';
+        currentPage = 1;
+        loadJobs();
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts + 'Z');
+            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return ts; }
+    }
+
+    // Initial load
+    loadJobs();
+</script>
+{% endblock %}
